@@ -62,7 +62,6 @@ runHackageProxy HackageProxySettings {..} = do
         isTarball res =
             ".tar.gz" `isSuffixOf` rawPathInfo waiReq
             && responseStatus res == status200
-            && lookup "content-type" (responseHeaders res) == Just "application/x-tar"
         req = baseReq { path = path baseReq `combine` rawPathInfo' }
         rawPathInfo' =
             case pathInfo waiReq of
