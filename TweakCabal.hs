@@ -24,7 +24,7 @@ tweakCabal TweakCabalSettings {..} bs = fromMaybe bs $ do
     let string = showGenericPackageDescription gpd
             { condLibrary = tweakCondTree <$> condLibrary gpd
             , condExecutables = second tweakCondTree <$> condExecutables gpd
-            , condTestSuites = second tweakCondTree <$> condTestSuites gpd
+            , condTestSuites = second (fixTestSuite . tweakCondTree) <$> condTestSuites gpd
             , condBenchmarks = second tweakCondTree <$> condBenchmarks gpd
             }
     -- Following added for:
@@ -51,3 +51,21 @@ tweakCabal TweakCabalSettings {..} bs = fromMaybe bs $ do
         , tweakCondTree b
         , tweakCondTree <$> c
         )
+
+    -- Following added for:
+    -- https://github.com/haskell/cabal/issues/1202
+    fixTestSuite ct = ct
+        { condTreeComponents = fixTestSuiteComp (condTreeData ct) <$> condTreeComponents ct
+        }
+
+    fixTestSuiteComp ts (a, b, c) =
+        ( a
+        , fixTestSuiteTree ts b
+        , fixTestSuiteTree ts <$> c
+        )
+
+    fixTestSuiteTree ts ct = fixTestSuite $ ct
+        { condTreeData = (condTreeData ct)
+            { testInterface = testInterface ts
+            }
+        }
