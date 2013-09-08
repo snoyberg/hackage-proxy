@@ -2,7 +2,13 @@
 {-# LANGUAGE RecordWildCards   #-}
 module TweakCabal where
 
-import           ClassyPrelude
+import           BasicPrelude
+import qualified Data.Set                                    as Set
+import qualified Data.Text                                   as T
+import           Data.Text.Encoding.Error                    (lenientDecode)
+import           Data.Text.Lazy                              (pack, unpack)
+import           Data.Text.Lazy.Encoding                     (decodeUtf8With,
+                                                              encodeUtf8)
 import           Debug.Trace
 import           Distribution.Package
 import           Distribution.PackageDescription
@@ -18,7 +24,7 @@ data TweakCabalSettings = TweakCabalSettings
 tweakCabal :: TweakCabalSettings -> LByteString -> LByteString
 tweakCabal TweakCabalSettings {..} bs = fromMaybe bs $ do
     gpd <-
-        case parsePackageDescription $ unpack $ decodeUtf8 bs of
+        case parsePackageDescription $ unpack $ decodeUtf8With lenientDecode bs of
             ParseFailed _ -> Nothing
             ParseOk _ x -> Just x
     let string = showGenericPackageDescription gpd
@@ -43,7 +49,7 @@ tweakCabal TweakCabalSettings {..} bs = fromMaybe bs $ do
     tweakConstraints = map tweakDependency
 
     tweakDependency orig@(Dependency name'@(PackageName name) _)
-        | pack name `elem` tcsNoBounds = Dependency name' anyVersion
+        | T.pack name `Set.member` tcsNoBounds = Dependency name' anyVersion
         | otherwise = orig
 
     tweakComponents (a, b, c) =

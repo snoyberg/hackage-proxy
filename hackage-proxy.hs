@@ -1,8 +1,10 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
-import           ClassyPrelude
+import           BasicPrelude
 import           HackageProxy
 import           Options.Applicative
+import qualified Data.Text as T
+import qualified Data.Set as Set
 
 hackageProxySettings :: Parser HackageProxySettings
 hackageProxySettings = HackageProxySettings
@@ -19,7 +21,7 @@ hackageProxySettings = HackageProxySettings
        <> short 'n'
        <> metavar "PACKAGE"
         )))
-    <*> (pack <$> strOption
+    <*> (T.pack <$> strOption
         ( long "source"
        <> help "Hackage source URL we're proxying from"
        <> short 's'
@@ -27,14 +29,14 @@ hackageProxySettings = HackageProxySettings
        <> metavar "URL"
         ))
   where
-    fixNoBounds [] = pack $ words "base process Cabal directory template-haskell"
-    fixNoBounds x = pack $ map pack x
+    fixNoBounds [] = Set.fromList $ words "base process Cabal directory template-haskell"
+    fixNoBounds x = Set.fromList $ map T.pack x
 
 main :: IO ()
 main = do
     hps <- execParser opts
     putStrLn $ "Listening on port: " ++ show (hpsPort hps)
-    putStrLn $ "Dropping bounds for: " ++ unwords (unpack $ hpsNoBounds hps)
+    putStrLn $ "Dropping bounds for: " ++ unwords (Set.toList $ hpsNoBounds hps)
     putStrLn $ "Downloading from: " ++ hpsSource hps
     runHackageProxy hps
   where

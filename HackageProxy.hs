@@ -6,7 +6,7 @@
 module HackageProxy where
 
 import           Blaze.ByteString.Builder (fromByteString)
-import           ClassyPrelude
+import           BasicPrelude
 import qualified Codec.Archive.Tar        as Tar
 import           Codec.Compression.GZip   (compress)
 import qualified Data.ByteString          as S
@@ -22,6 +22,10 @@ import           Network.Wai              (Response (ResponseSource), pathInfo,
 import           Network.Wai.Handler.Warp (run)
 import           System.FilePath          (takeExtension)
 import           TweakCabal
+import qualified Data.Text as T
+import qualified Data.HashSet as HashSet
+import Data.Text.Encoding (encodeUtf8)
+import qualified Data.ByteString.Lazy as L
 
 data HackageProxySettings = HackageProxySettings
     { hpsPort     :: Int
@@ -31,9 +35,9 @@ data HackageProxySettings = HackageProxySettings
 
 runHackageProxy :: HackageProxySettings -> IO ()
 runHackageProxy HackageProxySettings {..} = do
-    baseReq <- parseUrl $ unpack hpsSource
+    baseReq <- parseUrl $ T.unpack hpsSource
     run hpsPort $ app baseReq
-        { checkStatus = \_ _ -> Nothing
+        { checkStatus = \_ _ _ -> Nothing
         -- Sometimes Hackage can be slow at responding.
         , responseTimeout = Just 30000000
         }
@@ -50,33 +54,33 @@ runHackageProxy HackageProxySettings {..} = do
         (src, _) <- unwrapResumable $ responseBody res
 
         let resStatus = responseStatus res
-            resHeaders = (filter ((`elem` safeResponseHeaders) . fst) (responseHeaders res))
+            resHeaders = (filter ((`HashSet.member` safeResponseHeaders) . fst) (responseHeaders res))
 
         if isTarball res
             then do
-                lbs <- fromChunks <$> lazyConsume (src $= ungzip)
+                lbs <- L.fromChunks <$> lazyConsume (src $= ungzip)
                 entries <- mapEntries tweakEntry $ Tar.read lbs
                 return $ responseLBS resStatus resHeaders (compress $ Tar.write entries)
             else return $ ResponseSource resStatus resHeaders (mapOutput (Chunk . fromByteString) src)
       where
         isTarball res =
-            ".tar.gz" `isSuffixOf` rawPathInfo waiReq
+            ".tar.gz" `S.isSuffixOf` rawPathInfo waiReq
             && responseStatus res == status200
         req = baseReq { path = path baseReq `combine` rawPathInfo' }
         rawPathInfo' =
             case pathInfo waiReq of
-                ["package", stripSuffix ".tar.gz" -> Just packver] | Just package <- mpackage ->
+                ["package", T.stripSuffix ".tar.gz" -> Just packver] | Just package <- mpackage ->
                     encodeUtf8 $ intercalate "/" [package, version, packver ++ ".tar.gz"]
                   where
-                    (stripSuffix "-" -> mpackage, version) = breakOnEnd "-" packver
+                    (T.stripSuffix "-" -> mpackage, version) = breakOnEnd "-" packver
                 _ -> rawPathInfo waiReq
         combine a b
-            | "/" `isSuffixOf` a || "/" `S.isPrefixOf` b = a ++ b
-            | otherwise = concat [a, "/", b]
+            | "/" `S.isSuffixOf` a || "/" `S.isPrefixOf` b = a ++ b
+            | otherwise = mconcat [a, "/", b]
 
     tweakEntry e@(Tar.entryContent -> Tar.NormalFile lbs _)
         | takeExtension (Tar.entryPath e) == ".cabal" = e
-            { Tar.entryContent = Tar.NormalFile lbs' $ length lbs'
+            { Tar.entryContent = Tar.NormalFile lbs' $ L.length lbs'
             }
       where
         lbs' = tweakCabal tcs lbs
@@ -87,7 +91,7 @@ runHackageProxy HackageProxySettings {..} = do
     mapEntries _ (Tar.Fail e) = throwIO e
 
 safeResponseHeaders :: HashSet (CI ByteString)
-safeResponseHeaders = pack
+safeResponseHeaders = HashSet.fromList
     [ "content-type"
     , "etag"
     , "expires"
