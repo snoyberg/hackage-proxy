@@ -1,5 +1,5 @@
 name:                hackage-proxy
-version:             0.2.0.1
+version:             0.2.0.2
 synopsis:            Provide a proxy for Hackage which modifies responses in some way.
 description:         The motivating use case for this is testing packages with newer versions of GHC. In this case, upper bounds on base, process, and a few other packages will often prevent compilation. This proxy will allow you to strip those upper bounds and proceed with compilation. In the future, other features may be added as well, such as package replacement.
 homepage:            http://github.com/snoyberg/hackage-proxy
