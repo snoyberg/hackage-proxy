@@ -2,7 +2,7 @@
 {-# LANGUAGE RecordWildCards   #-}
 module TweakCabal where
 
-import           BasicPrelude
+import           BasicPrelude                                hiding (encodeUtf8)
 import qualified Data.Set                                    as Set
 import qualified Data.Text                                   as T
 import           Data.Text.Encoding.Error                    (lenientDecode)
