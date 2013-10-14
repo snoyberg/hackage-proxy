@@ -29,7 +29,7 @@ hackageProxySettings = HackageProxySettings
        <> metavar "URL"
         ))
   where
-    fixNoBounds [] = Set.fromList $ words "base process Cabal directory template-haskell"
+    fixNoBounds [] = Set.fromList $ words "base process Cabal directory template-haskell array unix"
     fixNoBounds x = Set.fromList $ map T.pack x
 
 main :: IO ()
