@@ -5,7 +5,7 @@
 {-# LANGUAGE ViewPatterns      #-}
 module HackageProxy where
 
-import           Blaze.ByteString.Builder (fromByteString)
+import           Blaze.ByteString.Builder (fromByteString, fromLazyByteString)
 import           BasicPrelude
 import qualified Codec.Archive.Tar        as Tar
 import           Codec.Compression.GZip   (compress)
@@ -16,8 +16,10 @@ import           Data.Conduit.Lazy        (lazyConsume)
 import           Data.Conduit.Zlib        (ungzip)
 import           Data.Text                (breakOnEnd)
 import           Network.HTTP.Conduit
+import           Network.HTTP.Client      (responseOpen, responseClose)
+import           Network.HTTP.Client.Conduit (bodyReaderSource)
 import           Network.HTTP.Types       (status200)
-import           Network.Wai              (Response (ResponseSource), pathInfo,
+import           Network.Wai              (responseSourceBracket, pathInfo,
                                            rawPathInfo, responseLBS)
 import           Network.Wai.Handler.Warp (run)
 import           System.FilePath          (takeExtension)
@@ -49,19 +51,22 @@ runHackageProxy HackageProxySettings {..} = do
     -- that we're /not/ using withManager: we want to reuse the original
     -- ResourceT of the WAI app so that we can keep resources open from the
     -- request to response.
-    app baseReq waiReq = bracket (lift $ newManager def) (lift . closeManager) $ \man -> do
-        res <- http req man
-        (src, _) <- unwrapResumable $ responseBody res
+    app baseReq waiReq =
+      bracket (newManager conduitManagerSettings) closeManager $ \man -> do
+      responseSourceBracket (responseOpen req man) responseClose $ \res -> do
+        let src = bodyReaderSource $ responseBody res
 
-        let resStatus = responseStatus res
+            resStatus = responseStatus res
             resHeaders = (filter ((`HashSet.member` safeResponseHeaders) . fst) (responseHeaders res))
 
-        if isTarball res
+        src' <- if isTarball res
             then do
                 lbs <- L.fromChunks <$> lazyConsume (src $= ungzip)
                 entries <- mapEntries tweakEntry $ Tar.read lbs
-                return $ responseLBS resStatus resHeaders (compress $ Tar.write entries)
-            else return $ ResponseSource resStatus resHeaders (mapOutput (Chunk . fromByteString) src)
+                return $ yield $ Chunk $ fromLazyByteString $ compress $ Tar.write entries
+            else return $ mapOutput (Chunk . fromByteString) src
+
+        return (resStatus, resHeaders, src')
       where
         isTarball res =
             ".tar.gz" `S.isSuffixOf` rawPathInfo waiReq
